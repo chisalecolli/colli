@@ -81,8 +81,14 @@
             justify-content: flex-start;
         }
 
-        .message-content {
+        .message-wrapper {
             max-width: 70%;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .message-content {
             padding: 12px 16px;
             border-radius: 8px;
             word-wrap: break-word;
@@ -99,6 +105,35 @@
             background: #e0e0e0;
             color: #333;
             border-radius: 18px 18px 18px 0;
+        }
+
+        .message-actions {
+            display: flex;
+            gap: 8px;
+            padding: 0 16px;
+        }
+
+        .download-btn {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 600;
+            transition: background 0.3s;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .download-btn:hover {
+            background: #764ba2;
+        }
+
+        .download-btn:active {
+            transform: scale(0.95);
         }
 
         .typing {
@@ -199,8 +234,10 @@
 
         <div class="chat-box" id="chatBox">
             <div class="message bot">
-                <div class="message-content">
-                    👋 Hello! I'm Colli, your AI coding assistant. Ask me anything about programming, code explanations, debugging, or coding best practices!
+                <div class="message-wrapper">
+                    <div class="message-content">
+                        👋 Hello! I'm Colli, your AI coding assistant. Ask me anything about programming, code explanations, debugging, or coding best practices!
+                    </div>
                 </div>
             </div>
         </div>
@@ -277,15 +314,55 @@
             const messageDiv = document.createElement('div');
             messageDiv.className = `message ${sender}`;
 
+            const wrapperDiv = document.createElement('div');
+            wrapperDiv.className = 'message-wrapper';
+
             const contentDiv = document.createElement('div');
             contentDiv.className = 'message-content';
             contentDiv.textContent = text;
 
-            messageDiv.appendChild(contentDiv);
+            wrapperDiv.appendChild(contentDiv);
+
+            // Add download button only for bot messages
+            if (sender === 'bot') {
+                const actionsDiv = document.createElement('div');
+                actionsDiv.className = 'message-actions';
+
+                const downloadBtn = document.createElement('button');
+                downloadBtn.className = 'download-btn';
+                downloadBtn.innerHTML = '⬇️ Download';
+                downloadBtn.onclick = () => downloadResponse(text);
+
+                actionsDiv.appendChild(downloadBtn);
+                wrapperDiv.appendChild(actionsDiv);
+            }
+
+            messageDiv.appendChild(wrapperDiv);
             chatBox.appendChild(messageDiv);
 
             // Scroll to bottom
             chatBox.scrollTop = chatBox.scrollHeight;
+        }
+
+        function downloadResponse(text) {
+            // Create a blob with the response text
+            const blob = new Blob([text], { type: 'text/plain' });
+            
+            // Create a temporary URL for the blob
+            const url = window.URL.createObjectURL(blob);
+            
+            // Create a temporary anchor element
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `colli-response-${new Date().getTime()}.txt`;
+            
+            // Trigger the download
+            document.body.appendChild(a);
+            a.click();
+            
+            // Clean up
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
         }
 
         function showTyping() {
