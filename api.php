@@ -29,11 +29,11 @@ function loadEnv($filePath) {
 // Load .env file
 loadEnv(__DIR__ . '/.env');
 
-$hf_api_key = getenv('HF_API_KEY');
+$groq_api_key = getenv('GROQ_API_KEY');
 
-if (!$hf_api_key) {
+if (!$groq_api_key) {
     http_response_code(500);
-    echo json_encode(['error' => 'API key not configured']);
+    echo json_encode(['error' => 'API key not configured. Please add GROQ_API_KEY to .env file']);
     exit();
 }
 
@@ -47,29 +47,39 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit();
     }
     
-    // Use a more stable free model: Mistral-7B
-    $hf_api_url = "https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.1";
+    // Groq API endpoint
+    $groq_api_url = "https://api.groq.com/openai/v1/chat/completions";
     
     $headers = [
-        "Authorization: Bearer $hf_api_key",
+        "Authorization: Bearer $groq_api_key",
         "Content-Type: application/json"
     ];
     
+    // Prepare the request data
     $data = json_encode([
-        'inputs' => $message,
-        'parameters' => [
-            'max_length' => 512,
-            'temperature' => 0.7
-        ]
+        'model' => 'mixtral-8x7b-32768',
+        'messages' => [
+            [
+                'role' => 'system',
+                'content' => 'You are Colli, a helpful AI assistant for coding questions and programming. Provide clear, concise, and practical answers. Help with debugging, code explanations, best practices, and programming concepts.'
+            ],
+            [
+                'role' => 'user',
+                'content' => $message
+            ]
+        ],
+        'temperature' => 0.7,
+        'max_tokens' => 1024
     ]);
     
     $ch = curl_init();
-    curl_setopt($ch, CURLOPT_URL, $hf_api_url);
+    curl_setopt($ch, CURLOPT_URL, $groq_api_url);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
     curl_setopt($ch, CURLOPT_POST, true);
     curl_setopt($ch, CURLOPT_POSTFIELDS, $data);
     curl_setopt($ch, CURLOPT_TIMEOUT, 60);
+    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
     
     $response = curl_exec($ch);
     $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
@@ -78,7 +88,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     
     // Log errors for debugging
     if ($http_code !== 200) {
-        error_log("HF API Error - Code: $http_code, Response: $response, cURL Error: $curl_error");
+        error_log("Groq API Error - Code: $http_code, Response: $response, cURL Error: $curl_error");
     }
     
     if ($http_code === 429) {
@@ -87,26 +97,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit();
     }
     
+    if ($http_code === 401) {
+        http_response_code(401);
+        echo json_encode(['error' => 'Invalid API key. Please check your GROQ_API_KEY in .env file']);
+        exit();
+    }
+    
     if ($http_code !== 200) {
         http_response_code(500);
-        echo json_encode(['error' => 'Failed to get response from AI. Please try again later.']);
+        echo json_encode(['error' => 'Failed to get response from AI. Error: ' . $http_code . '. Please try again later.']);
         exit();
     }
     
     $result = json_decode($response, true);
     
-    // Extract the generated text
-    if (is_array($result) && count($result) > 0) {
-        $ai_response = $result[0]['generated_text'] ?? 'No response generated';
-        // Remove the input prompt from the response
-        $ai_response = str_replace($message, '', $ai_response);
-        $ai_response = trim($ai_response);
+    // Extract the AI response
+    if (isset($result['choices'][0]['message']['content'])) {
+        $ai_response = $result['choices'][0]['message']['content'];
     } else {
-        $ai_response = $result['generated_text'] ?? 'No response generated';
+        $ai_response = 'Sorry, I could not generate a response. Please try again.';
     }
     
     if (empty($ai_response)) {
-        $ai_response = "I understood your question: '$message' but need a moment to generate a response. Please try again.";
+        $ai_response = "I understood your question but need a moment to generate a response. Please try again.";
     }
     
     echo json_encode(['response' => $ai_response]);
