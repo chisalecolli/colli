@@ -47,15 +47,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit();
     }
     
-    // Call Hugging Face API
-    $hf_api_url = "https://api-inference.huggingface.co/models/zai-org/GLM-5.3";
+    // Use a more stable free model: Mistral-7B
+    $hf_api_url = "https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.1";
     
     $headers = [
         "Authorization: Bearer $hf_api_key",
         "Content-Type: application/json"
     ];
     
-    $data = json_encode(['inputs' => $message]);
+    $data = json_encode([
+        'inputs' => $message,
+        'parameters' => [
+            'max_length' => 512,
+            'temperature' => 0.7
+        ]
+    ]);
     
     $ch = curl_init();
     curl_setopt($ch, CURLOPT_URL, $hf_api_url);
@@ -63,15 +69,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
     curl_setopt($ch, CURLOPT_POST, true);
     curl_setopt($ch, CURLOPT_POSTFIELDS, $data);
-    curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 60);
     
     $response = curl_exec($ch);
     $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $curl_error = curl_error($ch);
     curl_close($ch);
+    
+    // Log errors for debugging
+    if ($http_code !== 200) {
+        error_log("HF API Error - Code: $http_code, Response: $response, cURL Error: $curl_error");
+    }
+    
+    if ($http_code === 429) {
+        http_response_code(429);
+        echo json_encode(['error' => 'Rate limited. Please try again in a moment.']);
+        exit();
+    }
     
     if ($http_code !== 200) {
         http_response_code(500);
-        echo json_encode(['error' => 'Failed to get response from AI']);
+        echo json_encode(['error' => 'Failed to get response from AI. Please try again later.']);
         exit();
     }
     
@@ -80,8 +98,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Extract the generated text
     if (is_array($result) && count($result) > 0) {
         $ai_response = $result[0]['generated_text'] ?? 'No response generated';
+        // Remove the input prompt from the response
+        $ai_response = str_replace($message, '', $ai_response);
+        $ai_response = trim($ai_response);
     } else {
         $ai_response = $result['generated_text'] ?? 'No response generated';
+    }
+    
+    if (empty($ai_response)) {
+        $ai_response = "I understood your question: '$message' but need a moment to generate a response. Please try again.";
     }
     
     echo json_encode(['response' => $ai_response]);
